@@ -51,7 +51,7 @@ function get_server_stats() {
         $stats['memory_usage'] = 'N/A (Memory calculation failed or command output changed)';
     }
 
-    // --- Storage Space Left ---
+    // --- Storage Space Left (REVISED to include Used Space in the output string) ---
     if (function_exists('disk_free_space') && function_exists('disk_total_space')) {
         $total_space = @disk_total_space($path);
         $free_space = @disk_free_space($path);
@@ -60,7 +60,9 @@ function get_server_stats() {
             $used_space = $total_space - $free_space;
             $used_percent = round(($used_space / $total_space) * 100, 2);
             
-            $stats['disk_space'] = sprintf('%s Available / %s Total (%s%% Used)', 
+            // **CHANGE HERE: Added Used space to the beginning of the string**
+            $stats['disk_space'] = sprintf('%s Used / %s Available / %s Total (%s%% Used)', 
+                                          formatBytes($used_space), // New: Used space
                                           formatBytes($free_space), 
                                           formatBytes($total_space), 
                                           $used_percent);
@@ -236,7 +238,7 @@ $initial_stats = get_server_stats();
 <body>
 
     <div class="dashboard">
-        <h1>Boyo Labs Server Status Dashboard v.1.1</h1>
+        <h1>Boyo Labs Server Status Dashboard v.1.2</h1> 
         <div id="stats-container" class="stats-grid">
             
             <div class="stat-card" id="cpu-load">
@@ -250,7 +252,7 @@ $initial_stats = get_server_stats();
             </div>
 
             <div class="stat-card" id="disk-space">
-                <h2>Disk Space (Script Partition)</h2>
+                <h2>Disk Space (Used / Available / Total)</h2>
                 <p class="stat-value"><?= htmlspecialchars($initial_stats['disk_space'] ?? '--') ?></p>
             </div>
             
