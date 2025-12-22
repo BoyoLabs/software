@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro JS Slicer - Tree Support Preview</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #121212; color: #eee; overflow: hidden; }
+        #toolbar { padding: 12px; background: #1f1f1f; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; border-bottom: 1px solid #333; z-index: 10; }
+        #viewer { flex-grow: 1; position: relative; }
+        .controls { display: flex; flex-direction: column; gap: 4px; }
+        label { font-size: 11px; text-transform: uppercase; color: #888; font-weight: bold; }
+        select, input, button { background: #2a2a2a; color: white; border: 1px solid #444; padding: 6px 10px; border-radius: 4px; font-size: 13px; }
+        button { background: #007bff; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        #status-bar { position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 10px 15px; border-radius: 8px; width: 250px; border: 1px solid #444; }
+        #progress-bg { width: 100%; height: 8px; background: #333; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+        #progress-fill { width: 0%; height: 100%; background: #28a745; transition: width 0.1s; }
+        .row { display: flex; gap: 8px; }
+    </style>
+</head>
+<body>
+
+<div id="toolbar">
+    <div class="controls">
+        <label>Printer</label>
+        <select id="printerSelect">
+            <option value="neptune3pro">Elegoo Neptune 3 Pro</option>
+            <option value="ender3v2">Ender 3 V2</option>
+            <option value="bambu">Bambu Lab P1P</option>
+        </select>
+    </div>
+    <div class="controls">
+        <label>STL File</label>
+        <input type="file" id="fileInput" accept=".stl">
+    </div>
+    <div class="controls">
+        <label>Rotate (X, Y, Z)</label>
+        <div class="row">
+            <input type="number" id="rotX" value="0" step="90" style="width: 45px;">
+            <input type="number" id="rotY" value="0" step="90" style="width: 45px;">
+            <input type="number" id="rotZ" value="0" step="90" style="width: 45px;">
+        </div>
+    </div>
+    <div class="controls">
+        <label>Supports</label>
+        <div class="row" style="align-items: center; gap: 5px; font-size: 12px;">
+            Tree Preview: <input type="checkbox" id="treeToggle">
+        </div>
+    </div>
+    <button id="sliceBtn">Slice & Download</button>
+</div>
+
+<div id="viewer">
+    <div id="status-bar">
+        <div id="status-text">Ready. Upload an STL.</div>
+        <div id="progress-bg"><div id="progress-fill"></div></div>
+    </div>
+</div>
+
+<script>
+    let scene, camera, renderer, model, controls, grid;
+    let supportGroup = new THREE.Group(); // Container for support visualization
+
+    const PRINTERS = {
+        neptune3pro: { w: 225, d: 225, h: 280, start: "G28\nM420 S1\nG92 E0", end: "G28 X0\nM104 S0\nM140 S0\nM84" },
+        ender3v2: { w: 220, d: 220, h: 250, start: "G28\nG92 E0", end: "G28 X0\nM84" },
+        bambu: { w: 256, d: 256, h: 256, start: "G28\nG92 E0", end: "M104 S0" }
+    };
+
+    function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight - 80), 0.1, 2000);
+        camera.position.set(200, 200, 200);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight - 80);
+        document.getElementById('viewer').appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(100, 200, 100);
+        scene.add(light, new THREE.AmbientLight(0x444444));
+        scene.add(supportGroup);
+
+        updateBed('neptune3pro');
+        animate();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    function updateBed(key) {
+        if(grid) scene.remove(grid);
+        const p = PRINTERS[key];
+        grid = new THREE.GridHelper(p.w, 20, 0x444444, 0x222222);
+        scene.add(grid);
+    }
+
+    // --- TREE SUPPORT PREVIEW LOGIC ---
+    function analyzeSupports() {
+        supportGroup.clear();
+        if (!model || !document.getElementById('treeToggle').checked) return;
+
+        const geom = model.geometry;
+        const positions = geom.attributes.position.array;
+        const normals = geom.attributes.normal.array;
+        const threshold = Math.cos(THREE.MathUtils.degToRad(45)); // 45 degree overhang
+
+        const supportMaterial = new THREE.MeshBasicMaterial({ color: 0x28a745, transparent: true, opacity: 0.6 });
+
+        // Sample vertices to find overhangs (every 10th triangle for performance)
+        for (let i = 0; i < normals.length; i += 27) {
+            const nx = normals[i], ny = normals[i+1], nz = normals[i+2];
+            const normalVec = new THREE.Vector3(nx, ny, nz).applyQuaternion(model.quaternion);
+
+            // Overhang check: Normal points down (negative Z in world space)
+            if (normalVec.y < -threshold) { 
+                const vx = positions[i], vy = positions[i+1], vz = positions[i+2];
+                const worldPos = new THREE.Vector3(vx, vy, vz).applyMatrix4(model.matrixWorld);
+                
+                // Create a "Branch" (Cylinder) from the overhang point to the bed
+                const height = worldPos.y; 
+                const branchGeom = new THREE.CylinderGeometry(0.5, 2, height, 6);
+                const branch = new THREE.Mesh(branchGeom, supportMaterial);
+                
+                branch.position.set(worldPos.x, height / 2, worldPos.z);
+                supportGroup.add(branch);
+            }
+        }
+        document.getElementById('status-text').innerText = "Supports visualized.";
+    }
+
+    document.getElementById('treeToggle').onchange = analyzeSupports;
+    document.getElementById('printerSelect').onchange = (e) => updateBed(e.target.value);
+
+    document.getElementById('fileInput').onchange = (e) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const geometry = new THREE.STLLoader().parse(event.target.result);
+            if(model) scene.remove(model);
+            model = new THREE.Mesh(geometry, new THREE.MeshPhongMaterial({ color: 0x007bff }));
+            recenter();
+            scene.add(model);
+            analyzeSupports();
+            document.getElementById('status-text').innerText = "Model Loaded.";
+        };
+        reader.readAsArrayBuffer(e.target.files[0]);
+    };
+
+    function recenter() {
+        if(!model) return;
+        model.geometry.computeBoundingBox();
+        const center = model.geometry.boundingBox.getCenter(new THREE.Vector3());
+        model.position.set(-center.x, -model.geometry.boundingBox.min.z, -center.z);
+        model.updateMatrixWorld();
+    }
+
+    ['rotX', 'rotY', 'rotZ'].forEach(id => {
+        document.getElementById(id).oninput = () => {
+            if(!model) return;
+            model.rotation.set(
+                THREE.MathUtils.degToRad(document.getElementById('rotX').value),
+                THREE.MathUtils.degToRad(document.getElementById('rotY').value),
+                THREE.MathUtils.degToRad(document.getElementById('rotZ').value)
+            );
+            recenter();
+            analyzeSupports();
+        };
+    });
+
+    document.getElementById('sliceBtn').onclick = function() {
+        if(!model) return alert("Upload a model!");
+        const profile = PRINTERS[document.getElementById('printerSelect').value];
+        const layerH = 0.2;
+        const bbox = new THREE.Box3().setFromObject(model);
+        const height = bbox.max.y - bbox.min.y;
+        const layers = Math.ceil(height / layerH);
+
+        let gcode = [profile.start];
+        let current = 0;
+
+        function sliceLayer() {
+            if(current < layers) {
+                let z = (current * layerH).toFixed(2);
+                gcode.push(`; LAYER:${current}\nG1 Z${z} F3000`);
+                const percent = Math.floor((current / layers) * 100);
+                document.getElementById('progress-fill').style.width = percent + "%";
+                document.getElementById('status-text').innerText = `Slicing layer ${current}...`;
+                current++;
+                setTimeout(sliceLayer, 0); 
+            } else {
+                gcode.push(profile.end);
+                download(gcode.join("\n"));
+                document.getElementById('status-text').innerText = "Complete!";
+                document.getElementById('progress-fill').style.width = "0%";
+            }
+        }
+        sliceLayer();
+    };
+
+    function download(text) {
+        const blob = new Blob([text], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = "print.gcode";
+        a.click();
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
