@@ -6,6 +6,11 @@ This repo is dedicated to my single page web apps, programming and other scripti
 
 ## APPS LIST
 
+### node_Home.html
+
+* A home page replacement for developers. The goal was for it to look like a sort of server dashboard, but without using a server. Edit the links list to make it your own!
+* github.io link: https://boyolabs.github.io/main-dev/node_home.html
+
 ### justchat.html
 
 * A basic Pub/Sub multi user chat room (serverless)
