@@ -6,6 +6,11 @@ This repo is dedicated to my single page web apps, programming and other scripti
 
 ## APPS LIST
 
+### justchat.html
+
+* A basic P2P multi user chat room
+* github.io link: https://boyolabs.github.io/main-dev/justchat.html
+
 ### SkeletonSlicer.html (WIP)
 
 * a web based 3D slicer, currently working on it, definitly not done yet.
