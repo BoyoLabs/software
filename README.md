@@ -6,6 +6,11 @@ This repo is dedicated to my single page web apps, programming and other scripti
 
 ## APPS LIST
 
+### happy_birthday_axel.html
+
+* a little joke game for a coworker. Nothing spectacular.
+* github.io link: https://boyolabs.github.io/main-dev/happy_birthday_axel.html
+
 ### node_Home.html
 
 * A home page replacement for developers. The goal was for it to look like a sort of server dashboard, but without using a server. Edit the links list to make it your own!
