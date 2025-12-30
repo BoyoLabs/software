@@ -6,6 +6,10 @@ This repo is dedicated to my single page web apps, programming and other scripti
 
 ## APPS LIST
 
+## danikaBday.html
+* another birthday blast
+* github.io link: https://boyolabs.github.io/main-dev/danikaBday.html
+
 ### happy_birthday_axel.html
 
 * a little joke game for a coworker. Nothing spectacular.
