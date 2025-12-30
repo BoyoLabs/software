@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crystal Quest: Path of the Pagan</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a0b2e;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
+            background: linear-gradient(to bottom, #2d1b4e 0%, #1a0b2e 100%);
+            border: 4px solid #9b4dff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(155, 77, 255, 0.5);
+        }
+
+        #canvas {
+            display: block;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+        }
+
+        .stat {
+            font-size: 20px;
+            text-shadow: 2px 2px 4px #000;
+            margin-bottom: 5px;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 20px;
+            background: #9b4dff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #bb82ff;
+        }
+
+        h1 { color: #d4a5ff; text-shadow: 0 0 10px #9b4dff; }
+        p { margin: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="canvas" width="800" height="400"></canvas>
+    
+    <div id="ui">
+        <div class="stat">Score: <span id="score">0</span></div>
+        <div class="stat">Crystals: <span id="crystals">0</span></div>
+    </div>
+
+    <div id="overlay">
+        <h1>Crystal Quest</h1>
+        <p>Help your friend collect crystals and avoid the "Bad Vibes"!</p>
+        <p><strong>SPACE or CLICK to Jump</strong></p>
+        <button id="start-btn">Start Ritual</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const crystalsEl = document.getElementById('crystals');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('start-btn');
+
+    // Game Constants
+    const GRAVITY = 0.6;
+    const JUMP_FORCE = -12;
+    const GROUND_HEIGHT = 50;
+
+    // Game State
+    let gameActive = false;
+    let score = 0;
+    let crystalsCollected = 0;
+    let gameSpeed = 5;
+    let frame = 0;
+
+    // Character Image
+    const charImg = new Image();
+    charImg.src = 'https://scontent-msp1-1.xx.fbcdn.net/v/t39.30808-6/274534450_3058569764381355_3721573647229680000_n.jpg?_nc_cat=100&_nc_cb=99be929b-ad57045b&ccb=1-7&_nc_sid=6ee11a&_nc_ohc=3ksDtSFtEzkQ7kNvwH_geb1&_nc_oc=AdngjRS5AIQt_26-7wGG8PI7QSRGhvcJGzBeTR7RZvgL5eL5AKTU49AESKvnB5Jyxew&_nc_zt=23&_nc_ht=scontent-msp1-1.xx&_nc_gid=-0-UWsPV4UYJioV8LPQOtA&oh=00_AflOXiZ_C6io2l4akunCkXmY24HvkzAazPQKcbCrakfzWQ&oe=6959F78A';
+
+    const player = {
+        x: 80,
+        y: 200,
+        width: 60,
+        height: 60,
+        dy: 0,
+        jump() {
+            if (this.y === canvas.height - GROUND_HEIGHT - this.height) {
+                this.dy = JUMP_FORCE;
+            }
+        },
+        update() {
+            this.dy += GRAVITY;
+            this.y += this.dy;
+
+            // Ground collision
+            if (this.y > canvas.height - GROUND_HEIGHT - this.height) {
+                this.y = canvas.height - GROUND_HEIGHT - this.height;
+                this.dy = 0;
+            }
+        },
+        draw() {
+            ctx.save();
+            // Circle mask for the pagan photo
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width/2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(charImg, this.x, this.y, this.width, this.height);
+            // Border for the character
+            ctx.restore();
+            ctx.strokeStyle = '#9b4dff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width/2, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    };
+
+    let obstacles = [];
+    let collectibles = [];
+
+    class Obstacle {
+        constructor() {
+            this.width = 40;
+            this.height = 40;
+            this.x = canvas.width;
+            this.y = canvas.height - GROUND_HEIGHT - this.height;
+            this.color = '#ff4d4d'; // Red "Bad Vibes"
+        }
+        update() {
+            this.x -= gameSpeed;
+        }
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "red";
+            ctx.beginPath();
+            ctx.arc(this.x + 20, this.y + 20, 15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    class Crystal {
+        constructor() {
+            this.width = 30;
+            this.height = 30;
+            this.x = canvas.width;
+            this.y = Math.random() * (canvas.height - 150) + 50;
+            this.type = Math.random() > 0.5 ? '#e0b0ff' : '#00ffff'; // Amethyst or Quartz
+        }
+        update() {
+            this.x -= gameSpeed;
+        }
+        draw() {
+            ctx.fillStyle = this.type;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = this.type;
+            // Draw diamond shape
+            ctx.beginPath();
+            ctx.moveTo(this.x + 15, this.y);
+            ctx.lineTo(this.x + 30, this.y + 15);
+            ctx.lineTo(this.x + 15, this.y + 30);
+            ctx.lineTo(this.x, this.y + 15);
+            ctx.closePath();
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    function spawnObjects() {
+        if (frame % 100 === 0) {
+            obstacles.push(new Obstacle());
+        }
+        if (frame % 130 === 0) {
+            collectibles.push(new Crystal());
+        }
+    }
+
+    function handleCollisions() {
+        // Obstacles
+        obstacles.forEach((obs, index) => {
+            if (player.x < obs.x + obs.width &&
+                player.x + player.width > obs.x &&
+                player.y < obs.y + obs.height &&
+                player.y + player.height > obs.y) {
+                gameOver();
+            }
+        });
+
+        // Crystals
+        collectibles.forEach((cry, index) => {
+            if (player.x < cry.x + cry.width &&
+                player.x + player.width > cry.x &&
+                player.y < cry.y + cry.height &&
+                player.y + player.height > cry.y) {
+                collectibles.splice(index, 1);
+                crystalsCollected++;
+                score += 50;
+                crystalsEl.innerText = crystalsCollected;
+            }
+        });
+    }
+
+    function drawGround() {
+        ctx.fillStyle = '#120524';
+        ctx.fillRect(0, canvas.height - GROUND_HEIGHT, canvas.width, GROUND_HEIGHT);
+        ctx.strokeStyle = '#9b4dff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height - GROUND_HEIGHT);
+        ctx.lineTo(canvas.width, canvas.height - GROUND_HEIGHT);
+        ctx.stroke();
+    }
+
+    function resetGame() {
+        score = 0;
+        crystalsCollected = 0;
+        gameSpeed = 5;
+        frame = 0;
+        obstacles = [];
+        collectibles = [];
+        player.y = 200;
+        player.dy = 0;
+        scoreEl.innerText = '0';
+        crystalsEl.innerText = '0';
+    }
+
+    function gameOver() {
+        gameActive = false;
+        overlay.style.display = 'flex';
+        overlay.innerHTML = `
+            <h1>The Ritual Ended</h1>
+            <p>Your vibes were compromised!</p>
+            <p>Score: ${Math.floor(score)}</p>
+            <p>Crystals Found: ${crystalsCollected}</p>
+            <button onclick="startGame()">Try Again</button>
+        `;
+    }
+
+    function startGame() {
+        resetGame();
+        gameActive = true;
+        overlay.style.display = 'none';
+        animate();
+    }
+
+    function animate() {
+        if (!gameActive) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        frame++;
+        score += 0.1;
+        scoreEl.innerText = Math.floor(score);
+        
+        // Increase difficulty
+        if (frame % 500 === 0) gameSpeed += 0.5;
+
+        drawGround();
+        spawnObjects();
+
+        player.update();
+        player.draw();
+
+        obstacles.forEach((obs, i) => {
+            obs.update();
+            obs.draw();
+            if (obs.x + obs.width < 0) obstacles.splice(i, 1);
+        });
+
+        collectibles.forEach((cry, i) => {
+            cry.update();
+            cry.draw();
+            if (cry.x + cry.width < 0) collectibles.splice(i, 1);
+        });
+
+        handleCollisions();
+        requestAnimationFrame(animate);
+    }
+
+    // Controls
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') player.jump();
+    });
+    
+    canvas.addEventListener('mousedown', () => player.jump());
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        player.jump();
+    });
+
+    startBtn.addEventListener('click', startGame);
+
+</script>
+</body>
+</html>
